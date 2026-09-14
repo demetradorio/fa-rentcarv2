@@ -169,6 +169,29 @@ run_as_postgres() {
   fi
 }
 
+POSTGRES_DEFAULT_SOCKET_DIR="/var/run/postgresql"
+
+# The unix socket dir is normally created by the distro packaging via
+# systemd-tmpfiles; minimal containers lack it, so prepare it. Without root,
+# fall back to a workspace socket dir — pg_ctl --wait can only probe the
+# compiled default socket path, so callers must poll readiness over TCP.
+prepare_postgres_socket_dir() {
+  local state_root="$1"
+  PG_SOCKET_OPTIONS=""
+  PG_SOCKET_DIR=""
+  if run_as_postgres test -w "$POSTGRES_DEFAULT_SOCKET_DIR" 2>/dev/null; then
+    return 0
+  fi
+  if [[ "$(id -u)" -eq 0 ]]; then
+    id postgres >/dev/null 2>&1 || die 'the postgres system account is unavailable'
+    install -d -m 2775 -o postgres -g postgres "$POSTGRES_DEFAULT_SOCKET_DIR"
+    return 0
+  fi
+  PG_SOCKET_DIR="$state_root/run"
+  install -d -m 700 "$PG_SOCKET_DIR"
+  PG_SOCKET_OPTIONS="-k $PG_SOCKET_DIR"
+}
+
 run_as_redis() {
   if [[ "$(id -u)" -eq 0 ]] && id redis >/dev/null 2>&1; then
     runuser -u redis -- "$@"

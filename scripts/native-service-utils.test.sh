@@ -53,3 +53,14 @@ for _ in $(seq 1 50); do
 done
 [[ -s "$PORT_FILE" ]]
 tcp_port_is_in_use "$(cat "$PORT_FILE")"
+
+SOCKET_STATE_DIR="$TEMP_DIR/postgres-socket"
+prepare_postgres_socket_dir "$SOCKET_STATE_DIR"
+if [[ "$(id -u)" -eq 0 ]]; then
+  [[ -z "$PG_SOCKET_OPTIONS" ]]
+  [[ -d "$POSTGRES_DEFAULT_SOCKET_DIR" ]]
+else
+  [[ "$PG_SOCKET_OPTIONS" == "-k $SOCKET_STATE_DIR/run" ]]
+  [[ -d "$SOCKET_STATE_DIR/run" ]]
+fi
+prepare_postgres_socket_dir "$SOCKET_STATE_DIR"
