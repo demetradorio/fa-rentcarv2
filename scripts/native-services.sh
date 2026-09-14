@@ -123,9 +123,25 @@ start_postgres() {
 
   initialize_postgres
   prepare_postgres_paths
-  if ! run_as_postgres "$PG_CTL" --pgdata="$PG_DATA" --log="$PG_LOG" \
-    --options='-h 127.0.0.1 -p 5432' --wait --timeout=60 start >/dev/null 9>&-; then
-    die "PostgreSQL could not start. Inspect $PG_LOG"
+  prepare_postgres_socket_dir "$PG_ROOT"
+  local options='-h 127.0.0.1 -p 5432'
+  [[ -z "$PG_SOCKET_OPTIONS" ]] || options="$options $PG_SOCKET_OPTIONS"
+  if [[ -z "$PG_SOCKET_OPTIONS" ]]; then
+    if ! run_as_postgres "$PG_CTL" --pgdata="$PG_DATA" --log="$PG_LOG" \
+      --options="$options" --wait --timeout=60 start >/dev/null 9>&-; then
+      die "PostgreSQL could not start. Inspect $PG_LOG"
+    fi
+  else
+    # Custom socket dir: pg_ctl --wait probes the compiled default socket path,
+    # so poll readiness over TCP instead.
+    run_as_postgres "$PG_CTL" --pgdata="$PG_DATA" --log="$PG_LOG" \
+      --options="$options" start >/dev/null 9>&- || die "PostgreSQL could not start. Inspect $PG_LOG"
+    local attempt
+    for attempt in $(seq 1 60); do
+      postgres_connects_to postgres && break
+      sleep 1
+    done
+    postgres_connects_to postgres || die "PostgreSQL did not become ready. Inspect $PG_LOG"
   fi
 
   postgres_is_owned || die 'PostgreSQL started without proving ownership of the local data directory'
